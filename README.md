@@ -1,10 +1,10 @@
 # CP3cap
-A simple "connection oriented" packet sniffer.
+A simple "connection oriented" packet sniffer for linux and BSD.
 Breaks packets down into a connection between a remote and local host for
     easy real time traffic analysis and debugging.
 
 CP3cap is published for free under the terms of the MIT opensource license.
-
+Built with gcc but should be easy to use with other compilers such as clang.
 Requires >= C++ 11 std, libpcap and ncurses, uses bsd sockets for pkt nfo
 
 This program attempts to provide a ss / netstat style tool using libpcap
