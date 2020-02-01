@@ -1,5 +1,5 @@
 # CP3cap
-A simple "connection oriented packet" sniffer.
+A simple "connection oriented" packet sniffer.
 Breaks packets down into a connection between a remote and local host for
     easy real time traffic analysis and debugging.
 
