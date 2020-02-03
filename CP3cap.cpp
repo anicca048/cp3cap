@@ -416,11 +416,18 @@ bool connSort(const Network_Connection connA, const Network_Connection connB)
         {
             return true;
         }
+        //Sort by ip next
 		else if  (connA.dataSent == connB.dataSent)
         {
             if (connA.srcIP < connB.srcIP)
             {
                 return true;
+            }
+            //Sort by port last
+            else if (connA.srcIP == connB.srcIP)
+            {
+                if (connA.srcPort < connB.srcPort)
+                    return true;
             }
 		}
     }
