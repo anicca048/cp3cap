@@ -71,7 +71,7 @@ namespace Shim
 			std::string getEngineError();
 		private:
 			// Libpcap sesison handle.
-			pcap_t* engineHandle;
+			pcap_t* engineHandle = nullptr;
 			// Libpcap bpf compiled capture filter.
 			bpf_program engineFilter;
 			bool filterSet = false;
