@@ -5,7 +5,7 @@ Breaks packets down into a connection between a remote and local host for
 
 CP3cap is published for free under the terms of the MIT opensource license.
 Built with gcc but should be easy to use with other compilers such as clang.
-Requires >= C++ 11 std, libpcap and ncurses, uses bsd sockets for pkt nfo
+Requires >= C++ 17 std, libpcap and ncurses, uses bsd sockets for pkt nfo
 
 This program attempts to provide a ss / netstat style tool using libpcap
     instead of reading system socket information, plus user interaction.
@@ -31,18 +31,5 @@ CP3cap will always place a recognized private address (class A | B | C and lo)
 CP3cap is not designed to handle packet floods or purposefully malformed
     packets, so sniff malicious traffic at your own risk. < duh
 
-CP3cap tries to merge C++ Object Oriented style with C Procedural style
-    inorder to use libpcap (which is written in C) so the code can be a bit
-    messy. CP3cap uses an infinite pcap_loop() so that all packets are
-    captured and processed as quickly as possible untill the user exits.
-The use of pcap_loop() makes clean nonblocking ui seperation and OOP difficult
-    so suggestions on cleaning up the C++ side (specifically the capture
-    engine) and the multi-threading are more than welcome. Eventually I will
-    probably do a full rewrite rather than bother with refactoring.
-
-This project is built with portabillity in mind, so beyond the sockets api
-    all code should work within the C++ 11 std, libpcap and ncurses.
-For example in a windows port all that would change is the sockets api
-    (winsocks instead of bsd scokets) and libpcap (preferably would use
-    Npcap, but WinPcap if must). which should require almost no code change
-    beyond the specific header includes and function names used.
+This project is built with portabillity in mind, currently the main limitation
+    to cross compatabillity is the use of getopt and ncurses.
