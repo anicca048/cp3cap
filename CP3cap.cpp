@@ -22,6 +22,7 @@
  */
 
 #include <mutex>
+#include <atomic>
 #include <memory>
 #include <queue>
 #include <thread>
@@ -34,11 +35,22 @@
 #include <iostream>
 #include <algorithm>
 
+#ifdef _MSC_VER
+
+#error Windows platform not yet fully supported (becuase of ncurses and getopt).
+
+#else
+
 #include <unistd.h> 
 #include <ncurses.h>
 
+#endif
+
 #include "Shim.h"
 #include "Connections.h"
+
+#define PACKET_BATCH_COUNT 500
+#define CONN_LIST_HEADER "#   Type    LocalAddress:Port  RT   RemoteAddress:Port  PacketCount DataSent   "
 
 using Shim::CaptureEngine;
 using Connections::Connection;
@@ -49,13 +61,20 @@ using Connections::REVERSE_MATCH;
 void signalHandler(int);
 // Prints help screen.
 void printHelp();
-// Used to print all available libpcap devices for capture.
-void printDeviceList(CaptureEngine&);
 // Used to sort connection list by multiple directives.
 bool connSwapTest(const Connection&, const Connection&);
+// Sniffs packets with capture engine and adds them to queue.
+void packetCapture();
 
-// Global flag for stoping main ui loop from signal handler.
-bool stopUILoop = false;
+// Global flag for stoping main ui loop and capture thread from signal handler.
+std::atomic_bool stopUILoop = false;
+
+// Global pointer to capture engine for use by both threads.
+std::unique_ptr<CaptureEngine> cengPtr;
+// Global pointer to queue for handling packets between threads.
+std::unique_ptr<std::queue<IPV4_PACKET>> queuePtr;
+// Global mutex for locking queue between threads.
+std::mutex queueMtx;
 
 int main(int argc, char *argv[])
 {
@@ -108,18 +127,30 @@ int main(int argc, char *argv[])
             }
             case 'p':
             {
-                // Create a capture enging to print device list.
-                CaptureEngine ceng;
+                // Create a capture engine to print device list.
+                cengPtr.reset(new CaptureEngine);
 
-                if (ceng.genDeviceList() == -1)
+                if (cengPtr->genDeviceList() == -1)
                 {
                     std::cout << "[!] Error retrieving device list: "
-                              << ceng.getEngineError() << std::endl;
+                              << cengPtr->getEngineError() << std::endl;
 
                     return 1;
                 }
 
-                printDeviceList(ceng);
+                // Get device count for loop.
+                int deviceCount = cengPtr->getDeviceCount();
+
+                std::cout << "[#] Pcap Devices:" << std::endl
+                          << "[^]" << std::endl;
+    
+                // Print list of available pcap devices.
+                for (int i = 0; i < deviceCount; i++ )
+                {
+                    std::cout << "[*] " << cengPtr->getDeviceName(i) << std::endl;
+                }
+
+                std::cout << "[^]" << std::endl;
                 return 0;
             }
             case 'h':
@@ -147,30 +178,30 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Create capture engine for capturing packets.
-    CaptureEngine ceng;
+    // Create capture engine.
+    cengPtr.reset(new CaptureEngine);
 
     // Generate device list.
-    if (ceng.genDeviceList() == -1)
+    if (cengPtr->genDeviceList() == -1)
     {
         std::cout << "[!] Error retrieving device list: "
-                  << ceng.getEngineError() << std::endl;
+                  << cengPtr->getEngineError() << std::endl;
 
         return 1;
     }
 
     // Initilize packet capture.
-    if (ceng.startCapture(arg_interface, arg_filter) == -1)
+    if (cengPtr->startCapture(arg_interface, arg_filter) == -1)
     {
         std::cout << "[!] Error initilizing capture engine: "
-                  << ceng.getEngineError() << std::endl;
+                  << cengPtr->getEngineError() << std::endl;
 
         return 1;
     }
 
     std::cout << "[+] CP3cap Loaded" << std::endl;
     
-    std::cout << "[#] " << ceng.getLibVersion() << std::endl
+    std::cout << "[#] " << cengPtr->getLibVersion() << std::endl
               << "[#] Device: " << arg_interface << std::endl;
 
     if ((!arg_filter.empty()) && (arg_filter != ""))
@@ -180,8 +211,14 @@ int main(int argc, char *argv[])
     // Main UI and capture loop.
     //
 
+    // Initilize queue and set pointer.
+    queuePtr.reset(new std::queue<IPV4_PACKET>);
+
     // Create connection list vector.
     std::vector<Connection> cList;
+
+    // Setup packet capture thread.
+    std::thread packetThread(packetCapture);
 
     // Set UI paramaters.
     initscr();
@@ -194,59 +231,68 @@ int main(int argc, char *argv[])
 
     while (!stopUILoop)
     {
-        // Create packet object.
-        IPV4_PACKET newPacket;
+        // Create tracker for batch processing.
+        int packetsProcessed = 0;
 
-        // Fill in packet information, or go to next loop iteration on fail.
-        if (ceng.getNextPacket(newPacket) == -1)
-            continue;
-
-        // Create new connection from packet.
-        Connection newConn(newPacket);
-
-        // Connection matching flag.
-        bool connFound = false;
-
-        // Check if connection already exists and if so update stats.
-        for (Connection& conn : cList)
+        for (; packetsProcessed < PACKET_BATCH_COUNT; packetsProcessed++)
         {
-            if (conn.MatchConnection(newConn) != NO_MATCH)
+            // Create packet object.
+            IPV4_PACKET newPacket;
+
+            // Get lock on queue.
+            std::unique_lock<std::mutex> queueLock(queueMtx);
+
+            // Grab packet if queue is not empty.
+            if (!queuePtr->empty())
             {
-                connFound = true;
-
-                if ((conn.state != "<>") && (newConn.state != conn.state))
-                    conn.state = "<>";
-                else if (conn.MatchConnection(newConn) == REVERSE_MATCH)
-                    conn.state = "<>";
-
-                conn.packetCount++;
-                conn.dataSent += newConn.dataSent;
-
-                break;
+                newPacket = queuePtr->front();
+                queuePtr->pop();
             }
+            // If queue is empty, break batch loop.
+            else
+                break;
+
+            // Manually release lock on queue if loop is going to continue.
+            queueLock.unlock();
+
+            // Create new connection from packet.
+            Connection newConn(newPacket);
+
+            // Connection matching flag.
+            bool connFound = false;
+
+            // Check if connection already exists and if so update stats.
+            for (Connection& conn : cList)
+            {
+                if (conn.MatchConnection(newConn) != NO_MATCH)
+                {
+                    connFound = true;
+
+                    if ((conn.state != "<>") && (newConn.state != conn.state))
+                        conn.state = "<>";
+                    else if (conn.MatchConnection(newConn) == REVERSE_MATCH)
+                        conn.state = "<>";
+
+                    conn.packetCount++;
+                    conn.dataSent += newConn.dataSent;
+
+                    break;
+                }
+            }
+
+            // Add conn to list becuase it doesn't already exist.
+            if (!connFound)
+                cList.push_back(newConn);
         }
 
-        // Add conn to list becuase it doesn't already exist.
-        if (!connFound)
-            cList.push_back(newConn);
-
-        // Sort connection list.
-        std::sort(cList.begin(), cList.end(), connSwapTest);
-
-        // Use stringstream and string to use iomanip formating with printw().
-        std::string line;
-        std::stringstream lineStream;
+        // Sort connection list if new packets were processed.
+        if (packetsProcessed != 0)
+            std::sort(cList.begin(), cList.end(), connSwapTest);
 
         // clear old window.
         clear();
 
-        // Print connection list column headers.
-        lineStream << "#   Type    LocalAddress:Port  RT   RemoteAddress:Port  PacketCount DataSent   ";
-
-        // Convert formated stream to a ncurses printable line of output.
-        line = lineStream.str();
-        lineStream.str("");
-        printw("%s\n", line.c_str());
+        printw("%s\n", CONN_LIST_HEADER);
 
         // Create screenbounds safegaurd to prevent pourover.
         int maxScrX, maxScrY = 0;
@@ -264,6 +310,9 @@ int main(int argc, char *argv[])
         // Print connection list.
         for (Connection &conn : cList)
         {
+            // Create sstream for setting a line of ncurses screen.
+            std::stringstream lineStream;
+
             iter++;
 
             // Check if reached screen boundry and stop if so.
@@ -277,16 +326,15 @@ int main(int argc, char *argv[])
             lineStream << std::left << std::setw(3) << iter << " "
                        << std::setw(4) << conn.protocol << " " << std::right
                        << std::setw(15) << conn.srcIP << ":" << std::left
-                       << std::setw(5) << conn.srcPort << " " << std::setw(2)
-                       << conn.state << " " << std::right << std::setw(15)
-                       << conn.dstIP << ":" << std::left << std::setw(5)
-                       << conn.dstPort << " " << std::setw(11)
-                       << conn.packetCount << " " << conn.dataSent;
+                       << std::setw(5) << conn.srcPort << " "
+                       << std::setw(2) << conn.state << " " << std::right
+                       << std::setw(15) << conn.dstIP << ":" << std::left
+                       << std::setw(5) << conn.dstPort << " "
+                       << std::setw(11) << conn.packetCount << " "
+                       << conn.dataSent;
 
-            // Convert formated stream to a ncurses printable line of output.
-            line = lineStream.str();
-            lineStream.str("");
-            printw("%s\n", line.c_str());
+            // Convert sstream to c_str and print with ncurses.
+            printw("%s\n", lineStream.str().c_str());
         }
 
         // Write updated window to screen.
@@ -318,6 +366,12 @@ int main(int argc, char *argv[])
             // Clear list of connections.
             case 'c':
             {
+                // Get lock on queue.
+                std::unique_lock<std::mutex> queueLock(queueMtx);
+
+                // Clear queue.
+                queuePtr.reset(new std::queue<IPV4_PACKET>);
+                // Clear conn list.
                 cList.clear();
 
                 refresh();
@@ -335,8 +389,11 @@ int main(int argc, char *argv[])
             break;
 
         // Sleep between screen writes.
-        //std::this_thread::sleep_for(milliseconds(111));
+        std::this_thread::sleep_for(std::chrono::milliseconds(333));
     }
+
+    // Wait for thread to exit.
+    packetThread.join();
 
     // UI cleanup.
     clear();
@@ -344,10 +401,33 @@ int main(int argc, char *argv[])
     endwin();
 
     // Engine cleanup.
-    ceng.stopCapture();
+    cengPtr->stopCapture();
+    cengPtr.reset();
+
+    // Queue cleanup.
+    queuePtr.reset();
 
     std::cout << "[+] Exiting." << std::endl;
     return 0;
+}
+
+void packetCapture()
+{
+    while (!stopUILoop)
+    {
+        // Create new packet object for adding to queue.
+        IPV4_PACKET newPacket;
+
+        // Fill in packet information, or go to next loop iteration on fail.
+        if (cengPtr->getNextPacket(newPacket) == -1)
+            continue;
+
+        // Create lock on queue.
+        std::unique_lock<std::mutex> queueLock(queueMtx);
+
+        // Add packet to queue.
+        queuePtr->push(newPacket);
+    }
 }
 
 void printHelp()
@@ -369,24 +449,6 @@ void signalHandler(int sigNum)
     // Handle system supplied termination.
     else if (sigNum == SIGTERM)
         std::exit(EXIT_FAILURE);
-}
-
-void printDeviceList(CaptureEngine& ceng)
-{
-    //(re)generate list of devices and get device count for loop.
-    ceng.genDeviceList();
-    int deviceCount = ceng.getDeviceCount();
-
-    std::cout << "[#] Pcap Devices:\n"
-              << "[^]\n";
-    
-    // Print list of available pcap devices.
-    for (int i = 0; i < deviceCount; i++ )
-    {
-        std::cout << "[*] " << ceng.getDeviceName(i) << std::endl;
-    }
-
-    std::cout << "[^]\n";
 }
 
 bool connSwapTest(const Connection& connA, const Connection& connB)

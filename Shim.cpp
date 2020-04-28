@@ -22,6 +22,13 @@
 #include "Shim.h"
 #include "Packets.h"
 
+// Using ethernet MTU for packet capture size limit.
+#define PCAP_PACKET_CAPTURE_LENGTH 1518
+// How long to wait for packet read attempt.
+#define PCAP_PACKET_READ_TIMEOUT 1000
+// Use promisc mode on iface (if supported) 1 for on and 0 for off.
+#define PCAP_IFACE_USE_PROMISC_MODE 1
+
 using Packets::IPHdrVer;
 using Packets::IPHdrLen;
 using Packets::TCPHdrLen;
@@ -115,14 +122,10 @@ int CaptureEngine::startCapture(const int deviceIndex, std::string filterStr)
         deviceNetmask = PCAP_NETMASK_UNKNOWN;
     }
 
-    // Pcap loop settings.
-    int packetCaptureLength = 1518;     // Packet byte capture limit.
-    int readTimeOutMS = 755;            // Packet read timeout.
-    int promiscMode = 1;                // Promiscuous mode toggle.
-
     // Create capture session handle.
-    engineHandle = pcap_open_live(pcapDevice, packetCaptureLength, promiscMode,
-		                          readTimeOutMS, pcapErrorBuffer);
+    engineHandle = pcap_open_live(pcapDevice, PCAP_PACKET_CAPTURE_LENGTH,
+    	                          PCAP_IFACE_USE_PROMISC_MODE,
+		                          PCAP_PACKET_READ_TIMEOUT, pcapErrorBuffer);
 
 	// Free memory.
 	delete[] pcapDevice;

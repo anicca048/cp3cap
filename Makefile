@@ -1,7 +1,10 @@
+# For building a non-release (debug) build, comment out SECFLAGS and strip
+# 	lines, and uncomment DEBUGFLAGS line.
 
 CXX=g++
-#SECFLAGS=-D_FORTIFY_SOURCE=2 -fstack-protector -fPIE -pie -Wl,-z,relro,-z,now
-CXXFLAGS=-g -std=c++17 -O2 -pipe -Wall -Wextra $(SECFLAGS)
+SECFLAGS=-D_FORTIFY_SOURCE=2 -fstack-protector -fPIE -pie -Wl,-z,relro,-z,now
+#DEGUBFLAGS=-g
+CXXFLAGS=$(DEGUBFLAGS) -std=c++17 -O2 -pipe -Wall -Wextra $(SECFLAGS)
 LDFLAGS=-Wall -Wextra -Wl,--build-id=none $(SECFLAGS)
 LDLIBS=-lpcap -lpthread -lncurses
 
@@ -13,7 +16,7 @@ all : cp3cap
 
 cp3cap : $(OBJS)
 	$(CXX) $(LDFLAGS) -o cp3cap $(OBJS) $(LDLIBS)
-	#strip -s -R .comment $(BINS)
+	strip -s -R .comment $(BINS)
 
 CP3cap.o : CP3cap.cpp Connections.h Shim.h
 	$(CXX) $(CXXFLAGS) -c -o CP3cap.o CP3cap.cpp
