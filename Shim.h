@@ -42,13 +42,13 @@ namespace Shim
 		uint32_t payload_size;
 	};
 
-	// Converts a C++ string to a C style string for libpcap usage.
-	int strToCSTR(const std::string&, char*, size_t);
-
 	// Shim's core, interfaces with libpcap to make packet capture easier.
 	class CaptureEngine
 	{
 		public:
+			// Default ctor and dtor, manage dynamic memory used by class.
+			CaptureEngine();
+			~CaptureEngine();
 			// Generates device name and description lists.
 			int genDeviceList();
 			// Does packet capture init.
@@ -73,7 +73,7 @@ namespace Shim
 			// Libpcap sesison handle.
 			pcap_t* engineHandle = nullptr;
 			// Libpcap bpf compiled capture filter.
-			bpf_program engineFilter;
+			bpf_program* engineFilter = nullptr;
 			bool filterSet = false;
 			// DataLink type for device used during startCapture().
 			int engineDataLink;

@@ -45,6 +45,32 @@ using Shim::IPV4_PACKET;
 using Shim::CaptureEngine;
 using Shim::strToCSTR;
 
+// Internal function used to convert STL stirng to cstr.
+static int strToCSTR(const std::string&, char*, size_t);
+
+CaptureEngine::CaptureEngine()
+{
+	// Need to load npcap dll instead of wpcap dll if on windows.
+	#ifdef _MSC_VER
+
+	SetDllDirectoryA(R"(C:\Windows\System32\Npcap\)");
+
+	#endif
+
+	// Allocate memory for new enginefilter.
+	engineFilter = new bpf_program;
+}
+
+CaptureEngine::~CaptureEngine()
+{
+	// Cleanup memory used for enginefilter.
+	if (engineFilter)
+	{
+		delete engineFilter;
+		engineFilter = nullptr;
+	}
+}
+
 int CaptureEngine::genDeviceList()
 {
 	// Pcap error message buffer with WinPcap overflow protection.
@@ -52,7 +78,6 @@ int CaptureEngine::genDeviceList()
 
 	// generate libpcap interface list.
 	pcap_if_t *deviceList;      // Pcap interface struct for device list.
-	pcap_if_t *device;          // Pcap device list proxy for loop code clarity.
 
 	// Grab pcap device list and check for retrieval error.
 	if (pcap_findalldevs(&deviceList, pcapErrorBuffer) == -1)
@@ -69,7 +94,7 @@ int CaptureEngine::genDeviceList()
 	}
 
 	// Create device name and description lists from pcap interface structs.
-	for (device = deviceList; device != nullptr; device = device->next)
+	for (pcap_if_t * device = deviceList; device != nullptr; device = device->next)
 	{
 		// Add device name.
 		deviceNames.push_back(device->name);
@@ -79,8 +104,21 @@ int CaptureEngine::genDeviceList()
 		{
 			std::string descriptionStr = device->description;
 
-			if (device->addresses && (device->addresses->addr->sa_family == AF_INET))
-				descriptionStr += ("[ " + IPV4AddrToStr(device->addresses->addr) + " ]");
+			for (pcap_addr* addresses = device->addresses; addresses != nullptr; addresses = addresses->next)
+			{
+				if (addresses->addr->sa_family == AF_INET)
+				{
+					// Get interface ip as string.
+					std::string addrStr = IPV4AddrToStr(addresses->addr);
+
+					// Make sure we didn't get invalid ip.
+					if (addrStr == "0.0.0.0")
+						continue;
+
+					descriptionStr += (" [ " + addrStr + " ]");
+					break;
+				}
+			}
 
 			deviceDescriptions.push_back(descriptionStr);
 		}
@@ -172,7 +210,7 @@ int CaptureEngine::startCapture(const int deviceIndex, std::string filterStr)
 	strToCSTR(filterStr, pcapFilter, filterStrSize);
 
     // Compile pcap filter and check for error.
-    if (pcap_compile(engineHandle, &engineFilter, pcapFilter,
+    if (pcap_compile(engineHandle, engineFilter, pcapFilter,
 		             deviceNetmask, deviceNetwork) == -1)
     {
         engineError = pcap_geterr(engineHandle);
@@ -185,7 +223,7 @@ int CaptureEngine::startCapture(const int deviceIndex, std::string filterStr)
 	delete[] pcapFilter;
 
     // Bind pcap filter to session handle and check for error.
-    if (pcap_setfilter(engineHandle, &engineFilter) == -1)
+    if (pcap_setfilter(engineHandle, engineFilter) == -1)
     {
         engineError = pcap_geterr(engineHandle);
         return -1;
@@ -389,7 +427,7 @@ void CaptureEngine::stopCapture()
 	// Free compiled filter code if used.
 	if (filterSet)
 	{
-		pcap_freecode(&engineFilter);
+		pcap_freecode(engineFilter);
 		filterSet = false;
 	}
 
@@ -426,7 +464,7 @@ std::string CaptureEngine::getEngineError()
 	return engineError;
 }
 
-int Shim::strToCSTR(const std::string& str, char* cstr, size_t size)
+static int Shim::strToCSTR(const std::string& str, char* cstr, size_t size)
 {
 	// Refuse to access invalid memory.
 	if (size != (str.length() + 1))
