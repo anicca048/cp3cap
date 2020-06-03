@@ -15,9 +15,9 @@ using Connections::MATCH_TYPE;
 using Connections::MATCH;
 using Connections::NO_MATCH;
 using Connections::REVERSE_MATCH;
+using Connections::IPV4AddrIsLocal;
 
 using Packets::IPV4AddrToStr;
-using Packets::IPV4AddrIsLocal;
 
 using Shim::IPV4_PACKET;
 using Shim::TCP;
