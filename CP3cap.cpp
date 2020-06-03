@@ -49,6 +49,8 @@
 #include "Shim.h"
 #include "Connections.h"
 
+#define PROGRAM_VERSION_STR "CP3cap v1.0.1"
+
 #define PACKET_BATCH_COUNT 500
 #define CONN_LIST_HEADER "#   Type    LocalAddress:Port  RT   RemoteAddress:Port  PacketCount DataSent   "
 
@@ -89,7 +91,7 @@ int main(int argc, char *argv[])
 
     int c = 0;
 
-    while((c = getopt(argc, argv, "hpi:f:")) != -1 )
+    while((c = getopt(argc, argv, "vhpi:f:")) != -1 )
     {
         switch(c)
         {
@@ -141,20 +143,31 @@ int main(int argc, char *argv[])
                 // Get device count for loop.
                 int deviceCount = cengPtr->getDeviceCount();
 
-                std::cout << "[#] Pcap Devices:" << std::endl
+                std::cout << std::endl
+                          << "[#] Pcap Devices:" << std::endl
                           << "[^]" << std::endl;
     
                 // Print list of available pcap devices.
                 for (int i = 0; i < deviceCount; i++ )
                 {
-                    std::cout << "[*] " << cengPtr->getDeviceName(i) << std::endl;
+                    std::cout << "[*] " << cengPtr->getDeviceName(i)
+                              << std::endl;
                 }
 
                 std::cout << "[^]" << std::endl;
                 return 0;
             }
+            case 'v':
+            {
+                std::cout << std::endl
+                          << PROGRAM_VERSION_STR << std::endl;
+
+                return 0;
+            }
             case 'h':
             {
+                std::cout << std::endl;
+                
                 printHelp();
 
                 return 0;
@@ -199,7 +212,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    std::cout << "[+] CP3cap Loaded" << std::endl;
+    std::cout << std::endl
+              << "[+] CP3cap starting." << std::endl;
     
     std::cout << "[#] " << cengPtr->getLibVersion() << std::endl
               << "[#] Device: " << arg_interface << std::endl;
@@ -432,10 +446,11 @@ void packetCapture()
 
 void printHelp()
 {
-    std::cout << "[#] [ -i <interface>    (libpcap interface)       ]" << std::endl
-              << "[#] [ -f <pcap_filter>  (libpcap capture filter)  ]" << std::endl
-              << "[#] [ -p                (list libpcap interfaces) ]" << std::endl
-              << "[#] [ -h                (show help message)       ]" << std::endl;
+    std::cout << "[#] [ -i <interface>   (libpcap interface)        ]" << std::endl
+              << "[#] [ -f <pcap_filter> (libpcap capture filter)   ]" << std::endl
+              << "[#] [ -p               (list libpcap interfaces)  ]" << std::endl
+              << "[#] [ -v               (Show program version info)]" << std::endl
+              << "[#] [ -h               (show help message)        ]" << std::endl;
 }
 
 void signalHandler(int sigNum)
