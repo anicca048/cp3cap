@@ -49,7 +49,7 @@
 #include "Shim.h"
 #include "Connections.h"
 
-#define PROGRAM_VERSION_STR "CP3cap v1.0.1"
+#define PROGRAM_VERSION_STR "CP3cap v1.0.2"
 
 #define PACKET_BATCH_COUNT 500
 #define CONN_LIST_HEADER "#   Type    LocalAddress:Port  RT   RemoteAddress:Port  PacketCount DataSent   "
@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
             case 'h':
             {
                 std::cout << std::endl;
-                
+
                 printHelp();
 
                 return 0;
