@@ -43,7 +43,6 @@ using Shim::TCP;
 using Shim::UDP;
 using Shim::IPV4_PACKET;
 using Shim::CaptureEngine;
-using Shim::strToCSTR;
 
 // Internal function used to convert STL stirng to cstr.
 static int strToCSTR(const std::string&, char*, size_t);
@@ -464,7 +463,7 @@ std::string CaptureEngine::getEngineError()
 	return engineError;
 }
 
-static int Shim::strToCSTR(const std::string& str, char* cstr, size_t size)
+static int strToCSTR(const std::string& str, char* cstr, size_t size)
 {
 	// Refuse to access invalid memory.
 	if (size != (str.length() + 1))
