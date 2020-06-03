@@ -49,7 +49,7 @@
 #include "Shim.h"
 #include "Connections.h"
 
-#define PROGRAM_VERSION_STR "CP3cap v1.0.2"
+#define PROGRAM_VERSION_STR "CP3cap v1.0.2 (https://github.com/anicca048/cp3cap)"
 
 #define PACKET_BATCH_COUNT 500
 #define CONN_LIST_HEADER "#   Type    LocalAddress:Port  RT   RemoteAddress:Port  PacketCount DataSent   "
